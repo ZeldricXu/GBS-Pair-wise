@@ -121,8 +121,7 @@ export function Sidebar({
       return;
     }
 
-    if (!value.replace("-", "").replace("_", "").isAlnum && 
-        !/^[a-zA-Z0-9_-]+$/.test(value)) {
+    if (!/^[a-zA-Z0-9_-]+$/.test(value)) {
       setError("名称只能包含字母、数字、下划线和连字符");
       return;
     }
