@@ -1,1 +1,0 @@
-Mac resource fork junk
