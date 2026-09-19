@@ -21,9 +21,22 @@ export default function Home() {
   const [selectedCollection, setSelectedCollection] = useState("default");
   const [activeTab, setActiveTab] = useState<"documents" | "chat">("documents");
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [activeUploads, setActiveUploads] = useState(0);
 
   const handleUploadComplete = () => {
     setRefreshTrigger((prev) => prev + 1);
+  };
+
+  const handleCollectionChange = (collection: string) => {
+    if (collection !== selectedCollection && activeUploads > 0) {
+      const confirmed = window.confirm(
+        `当前有 ${activeUploads} 个文件正在上传到知识库「${selectedCollection}」。\n\n切换知识库不会中断上传，文件仍会传入原知识库。确定要切换吗？`
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+    setSelectedCollection(collection);
   };
 
   const handleCollectionCreate = () => {
@@ -47,7 +60,7 @@ export default function Home() {
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
           selectedCollection={selectedCollection}
-          onCollectionChange={setSelectedCollection}
+          onCollectionChange={handleCollectionChange}
           activeTab={activeTab}
           onTabChange={setActiveTab}
           onCollectionCreate={handleCollectionCreate}
@@ -99,6 +112,7 @@ export default function Home() {
                   <DocumentUploader
                     collectionName={selectedCollection}
                     onUploadComplete={handleUploadComplete}
+                    onActiveUploadsChange={setActiveUploads}
                   />
 
                   <div className="border-t border-gray-200 dark:border-gray-700 pt-8">

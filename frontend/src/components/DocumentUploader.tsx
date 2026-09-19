@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState, useRef, useEffect } from "react";
-import { useDropzone } from "react-dropzone";
+import { useDropzone, FileRejection, FileError } from "react-dropzone";
 import { 
   Upload, 
   FileText, 
@@ -22,16 +22,19 @@ function cn(...inputs: any[]) {
 interface DocumentUploaderProps {
   collectionName: string;
   onUploadComplete?: () => void;
+  onActiveUploadsChange?: (count: number) => void;
 }
 
 type UploadStatus = "idle" | "uploading" | "processing" | "success" | "error";
 
 interface FileUploadState {
+  id: string;
   file: File;
   status: UploadStatus;
   error?: string;
   progress: number;
   elapsedTime: number;
+  targetCollection?: string;
 }
 
 const ACCEPTED_FILE_TYPES = {
@@ -40,35 +43,63 @@ const ACCEPTED_FILE_TYPES = {
   "text/markdown": [".md", ".markdown"],
 };
 
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
+
+function formatRejectionReason(errors: readonly FileError[]): string {
+  if (errors.some((e) => e.code === "file-too-large")) {
+    return "文件超过 50MB 大小限制";
+  }
+  if (errors.some((e) => e.code === "file-invalid-type")) {
+    return "不支持的文件格式（仅支持 PDF、Markdown、TXT）";
+  }
+  if (errors.some((e) => e.code === "too-many-files")) {
+    return "一次选择的文件过多";
+  }
+  return errors[0]?.message || "文件不符合上传要求";
+}
+
 export function DocumentUploader({
   collectionName,
   onUploadComplete,
+  onActiveUploadsChange,
 }: DocumentUploaderProps) {
   const [files, setFiles] = useState<FileUploadState[]>([]);
-  const timersRef = useRef<Map<number, NodeJS.Timeout>>(new Map());
+  const timersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const idCounterRef = useRef(0);
 
-  const startTimer = (index: number) => {
-    const existingTimer = timersRef.current.get(index);
+  const nextId = () => {
+    idCounterRef.current += 1;
+    return `upload-${Date.now()}-${idCounterRef.current}`;
+  };
+
+  const updateFile = (id: string, patch: Partial<FileUploadState>) => {
+    setFiles((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, ...patch } : f))
+    );
+  };
+
+  const startTimer = (id: string) => {
+    const existingTimer = timersRef.current.get(id);
     if (existingTimer) {
       clearInterval(existingTimer);
     }
 
     const timer = setInterval(() => {
       setFiles((prev) =>
-        prev.map((f, i) =>
-          i === index ? { ...f, elapsedTime: f.elapsedTime + 1 } : f
+        prev.map((f) =>
+          f.id === id ? { ...f, elapsedTime: f.elapsedTime + 1 } : f
         )
       );
     }, 1000);
 
-    timersRef.current.set(index, timer);
+    timersRef.current.set(id, timer);
   };
 
-  const stopTimer = (index: number) => {
-    const timer = timersRef.current.get(index);
+  const stopTimer = (id: string) => {
+    const timer = timersRef.current.get(id);
     if (timer) {
       clearInterval(timer);
-      timersRef.current.delete(index);
+      timersRef.current.delete(id);
     }
   };
 
@@ -78,95 +109,91 @@ export function DocumentUploader({
     };
   }, []);
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    const newFiles: FileUploadState[] = acceptedFiles.map((file) => ({
-      file,
-      status: "idle",
-      progress: 0,
-      elapsedTime: 0,
-    }));
-    setFiles((prev) => [...prev, ...newFiles]);
-  }, []);
+  const activeUploads = files.filter(
+    (f) => f.status === "uploading" || f.status === "processing"
+  ).length;
+
+  useEffect(() => {
+    onActiveUploadsChange?.(activeUploads);
+  }, [activeUploads, onActiveUploadsChange]);
+
+  const onDrop = useCallback(
+    (acceptedFiles: File[], fileRejections: FileRejection[]) => {
+      const accepted: FileUploadState[] = acceptedFiles.map((file) => ({
+        id: nextId(),
+        file,
+        status: "idle",
+        progress: 0,
+        elapsedTime: 0,
+      }));
+      const rejected: FileUploadState[] = fileRejections.map((rejection) => ({
+        id: nextId(),
+        file: rejection.file,
+        status: "error",
+        error: formatRejectionReason(rejection.errors),
+        progress: 0,
+        elapsedTime: 0,
+      }));
+      setFiles((prev) => [...prev, ...accepted, ...rejected]);
+    },
+    []
+  );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: ACCEPTED_FILE_TYPES,
-    maxSize: 50 * 1024 * 1024,
+    maxSize: MAX_FILE_SIZE,
   });
 
-  const removeFile = (index: number) => {
-    stopTimer(index);
-    setFiles((prev) => prev.filter((_, i) => i !== index));
+  const removeFile = (id: string) => {
+    stopTimer(id);
+    setFiles((prev) => prev.filter((f) => f.id !== id));
   };
 
-  const uploadFile = async (fileState: FileUploadState, index: number) => {
-    setFiles((prev) =>
-      prev.map((f, i) =>
-        i === index ? { ...f, status: "uploading" as UploadStatus, progress: 0, elapsedTime: 0 } : f
-      )
-    );
+  const uploadFile = async (id: string, file: File) => {
+    const targetCollection = collectionName;
 
-    startTimer(index);
+    updateFile(id, {
+      status: "uploading",
+      error: undefined,
+      progress: 0,
+      elapsedTime: 0,
+      targetCollection,
+    });
+
+    startTimer(id);
 
     try {
-      await documentApi.upload(
-        fileState.file,
-        collectionName,
-        (progress) => {
-          setFiles((prev) =>
-            prev.map((f, i) =>
-              i === index ? { ...f, progress } : f
-            )
-          );
-        }
-      );
+      await documentApi.upload(file, targetCollection, (progress) => {
+        updateFile(id, { progress });
+      });
 
-      setFiles((prev) =>
-        prev.map((f, i) =>
-          i === index
-            ? { ...f, status: "processing" as UploadStatus, progress: 100 }
-            : f
-        )
-      );
+      updateFile(id, { status: "processing", progress: 100 });
 
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      setFiles((prev) =>
-        prev.map((f, i) =>
-          i === index
-            ? { ...f, status: "success" as UploadStatus, progress: 100 }
-            : f
-        )
-      );
+      updateFile(id, { status: "success", progress: 100 });
 
-      stopTimer(index);
+      stopTimer(id);
 
       setTimeout(() => {
-        setFiles((prev) => prev.filter((_, i) => i !== index));
+        setFiles((prev) => prev.filter((f) => f.id !== id));
       }, 2000);
 
       onUploadComplete?.();
     } catch (error: any) {
-      stopTimer(index);
-      setFiles((prev) =>
-        prev.map((f, i) =>
-          i === index
-            ? {
-                ...f,
-                status: "error" as UploadStatus,
-                error: error.response?.data?.detail || "上传失败",
-              }
-            : f
-        )
-      );
+      stopTimer(id);
+      updateFile(id, {
+        status: "error",
+        error: error.response?.data?.detail || "上传失败",
+      });
     }
   };
 
   const uploadAll = async () => {
     const idleFiles = files.filter((f) => f.status === "idle");
-    for (let i = 0; i < idleFiles.length; i++) {
-      const fileIndex = files.findIndex((f) => f === idleFiles[i]);
-      await uploadFile(idleFiles[i], fileIndex);
+    for (const fileState of idleFiles) {
+      await uploadFile(fileState.id, fileState.file);
     }
   };
 
@@ -266,9 +293,9 @@ export function DocumentUploader({
           </div>
 
           <div className="space-y-2">
-            {files.map((fileState, index) => (
+            {files.map((fileState) => (
               <div
-                key={index}
+                key={fileState.id}
                 className={cn(
                   "flex items-center gap-3 p-4 rounded-xl border transition-all",
                   fileState.status === "error"
@@ -318,6 +345,15 @@ export function DocumentUploader({
                     <span className="text-xs text-gray-500 dark:text-gray-400">
                       {formatFileSize(fileState.file.size)}
                     </span>
+                    {fileState.targetCollection &&
+                      fileState.targetCollection !== collectionName && (
+                        <>
+                          <span className="text-xs text-gray-400">·</span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            传入「{fileState.targetCollection}」
+                          </span>
+                        </>
+                      )}
                     {(fileState.status === "uploading" || fileState.status === "processing") && (
                       <>
                         <span className="text-xs text-gray-400">·</span>
@@ -371,13 +407,13 @@ export function DocumentUploader({
                   {fileState.status === "idle" && (
                     <>
                       <button
-                        onClick={() => uploadFile(fileState, index)}
+                        onClick={() => uploadFile(fileState.id, fileState.file)}
                         className="px-3 py-1.5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors"
                       >
                         上传
                       </button>
                       <button
-                        onClick={() => removeFile(index)}
+                        onClick={() => removeFile(fileState.id)}
                         className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
                       >
                         <X className="w-4 h-4 text-gray-500" />
@@ -386,14 +422,16 @@ export function DocumentUploader({
                   )}
                   {fileState.status === "error" && (
                     <>
+                      {fileState.targetCollection && (
+                        <button
+                          onClick={() => uploadFile(fileState.id, fileState.file)}
+                          className="px-3 py-1.5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors"
+                        >
+                          重试
+                        </button>
+                      )}
                       <button
-                        onClick={() => uploadFile(fileState, index)}
-                        className="px-3 py-1.5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors"
-                      >
-                        重试
-                      </button>
-                      <button
-                        onClick={() => removeFile(index)}
+                        onClick={() => removeFile(fileState.id)}
                         className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                       >
                         <X className="w-4 h-4 text-red-500" />
