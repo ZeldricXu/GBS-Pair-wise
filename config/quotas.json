@@ -1,0 +1,30 @@
+{
+  "quotas": {
+    "orgs": {
+      "demo-org": {
+        "perSecond": 2000,
+        "perMinute": 100000,
+        "perHour": 3000000,
+        "concurrency": 20000
+      }
+    },
+    "projects": {
+      "demo-org": {
+        "demo-project": {
+          "perSecond": 1200,
+          "perMinute": 60000,
+          "perHour": 1800000,
+          "concurrency": 12000
+        }
+      }
+    },
+    "keys": {
+      "demo-key": {
+        "perSecond": 800,
+        "perMinute": 40000,
+        "perHour": 1200000,
+        "concurrency": 8000
+      }
+    }
+  }
+}

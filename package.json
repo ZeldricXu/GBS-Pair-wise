@@ -1,0 +1,18 @@
+{
+  "name": "run-b",
+  "version": "1.0.0",
+  "description": "进程内三层配额与并发租约服务",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js",
+    "loadtest": "node scripts/load-test.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "fastify": "^5.12.5"
+  }
+}
