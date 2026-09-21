@@ -1,0 +1,17 @@
+{
+  "name": "run-a",
+  "version": "1.0.0",
+  "description": "进程内三层配额服务（组织/项目/密钥）",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "bench": "node bench/bench.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "fastify": "^5.12.5"
+  }
+}

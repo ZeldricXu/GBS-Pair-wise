@@ -1,0 +1,37 @@
+{
+  "orgs": [
+    {
+      "id": "org-demo",
+      "limits": { "perSecond": 2000, "perMinute": 60000, "perHour": 1000000, "concurrency": 5000 }
+    }
+  ],
+  "projects": [
+    {
+      "id": "proj-a",
+      "orgId": "org-demo",
+      "limits": { "perSecond": 1200, "perMinute": 40000, "perHour": 600000, "concurrency": 3000 }
+    },
+    {
+      "id": "proj-b",
+      "orgId": "org-demo",
+      "limits": { "perSecond": 1200, "perMinute": 40000, "perHour": 600000, "concurrency": 3000 }
+    }
+  ],
+  "keys": [
+    {
+      "id": "key-a1",
+      "projectId": "proj-a",
+      "limits": { "perSecond": 800, "perMinute": 30000, "perHour": 400000, "concurrency": 1000 }
+    },
+    {
+      "id": "key-a2",
+      "projectId": "proj-a",
+      "limits": { "perSecond": 800, "perMinute": 30000, "perHour": 400000, "concurrency": 1000 }
+    },
+    {
+      "id": "key-b1",
+      "projectId": "proj-b",
+      "limits": { "perSecond": 800, "perMinute": 30000, "perHour": 400000, "concurrency": 1000 }
+    }
+  ]
+}
